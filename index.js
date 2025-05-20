@@ -8,14 +8,18 @@ const pLimit = require('p-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Enable CORS for all origins (adjust if you want to restrict)
 app.use(cors());
+
+// Parse JSON bodies
 app.use(express.json());
 
-const MAX_CONCURRENT = 5;         // low concurrency to save CPU
-const MAX_FOUND = 50;             // stop at 50 found URLs
-const REQUEST_TIMEOUT = 2500;     // quick timeout to save RAM and cpu
+// Limits and settings tuned for low CPU & RAM usage on Render 512MB/0.1CPU
+const MAX_CONCURRENT = 5;         // Only 5 parallel HTTP requests max
+const MAX_FOUND = 50;             // Stop after finding 50 valid URLs
+const REQUEST_TIMEOUT = 2500;     // 2.5 seconds timeout per request
 
-// Load your 5k common.txt dictionary once
+// Load dictionary once on startup
 const commonList = fs.readFileSync(path.join(__dirname, 'common.txt'), 'utf-8')
   .split('\n')
   .map(s => s.trim())
@@ -32,7 +36,9 @@ app.post('/scan', async (req, res) => {
 
   let foundFiles = [];
   let stoppedEarly = false;
-  let baseUrl = site.endsWith('/') ? site : site + '/';
+  const baseUrl = site.endsWith('/') ? site : site + '/';
+
+  console.log(`Scan started for: ${baseUrl}`);
 
   const tasks = commonList.map(word =>
     limit(async () => {
@@ -46,21 +52,26 @@ app.post('/scan', async (req, res) => {
       try {
         const response = await axios.get(url, {
           timeout: REQUEST_TIMEOUT,
-          validateStatus: null,
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ScannerBot/1.0)' },
+          validateStatus: null, // don’t throw on non-200
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; ScannerBot/1.0)',
+            'Accept': '*/*',
+          },
         });
 
         if (response.status === 200) {
           foundFiles.push(url);
-          console.log('Found:', url);
+          console.log(`Found: ${url}`);
         }
-      } catch {
-        // silent fail on timeout or error, no biggie
+      } catch (err) {
+        // Fail quietly on timeout or network errors, no stress
       }
     })
   );
 
   await Promise.all(tasks);
+
+  console.log(`Scan finished for: ${baseUrl} - found ${foundFiles.length} files`);
 
   res.json({
     files: foundFiles,
@@ -68,6 +79,12 @@ app.post('/scan', async (req, res) => {
   });
 });
 
+// Health check route (optional)
+app.get('/', (req, res) => {
+  res.send('URL Guesser backend alive and chillin.');
+});
+
 app.listen(PORT, () => {
   console.log(`Scanner backend lit on port ${PORT}, running chill mode.`);
 });
+
