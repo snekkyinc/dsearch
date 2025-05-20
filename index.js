@@ -3,7 +3,7 @@ const cors = require('cors');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const pLimit = require('p-limit');
+const pLimit = require('p-limit').default;   // <-- fixed import
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -87,4 +87,3 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Scanner backend lit on port ${PORT}, running chill mode.`);
 });
-
